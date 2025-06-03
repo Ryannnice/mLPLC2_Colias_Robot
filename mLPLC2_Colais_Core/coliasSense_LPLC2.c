@@ -9,12 +9,17 @@
 #include "coliasapi.h"
 
 
+
+// External Storage For Visualisation : 
+uint8_t T[Image_Height][Image_Width] ; // T4/T6 Cells
+
+
+
 // LPLC2Type LPLC2 ; // moved to CCMRAM_DEF.c
 LPLC2_pControlTypedef hLPLC2 ;
 
 u16 Image[3][Image_Height][Image_Width]; // uint16_t
 s8 Diff_Image[2][Image_Height][Image_Width]; // int8_t
-
 
 
 void LPLC2_Init(LPLC2_pControlTypedef* hLPLC2)
@@ -24,9 +29,9 @@ void LPLC2_Init(LPLC2_pControlTypedef* hLPLC2)
     LPLC2.Params.W_ON = 0 ;
     LPLC2.Params.W_OFF = 1 ;
     LPLC2.Params.r = 1 ;
-    LPLC2.Params.t = 100 ;
+    LPLC2.Params.t = 10 ;
     LPLC2.Params.Bias = 7 ; // >> 7 bit // EMD Bias. Biger value means biger substraction.
-    LPLC2.Params.AF_Radius = Height / 3 ;
+    LPLC2.Params.AF_Radius = Height / 2 ;
     LPLC2.Params.AF_Radius_Exclusive = Height / 2 ;
 
 
@@ -39,15 +44,15 @@ void LPLC2_Init(LPLC2_pControlTypedef* hLPLC2)
     LPLC2.Params.Delay = DELAY_WINDOW - 1 ; // delay between two adjacent T4/T5 neurons
     ///////////////////////////////////////////////////////////////////////////////////
 
-    LPLC2.Params.T_cardinal = 20000 ; // 20 /* Binary Case */ ; 
+    LPLC2.Params.T_cardinal = 50000 ; // 20 /* Binary Case */ ; 
     LPLC2.Params.T_ExpansionEdgeNum = 3 ; // LPLC2 stimulated when ExpandingEdgeNum >= T
-    LPLC2.Params.AF_Threshold = 0 ; // 50000 ;
+    LPLC2.Params.AF_Threshold = LPLC2.Params.T_cardinal / 4 ; // 50000 ;
 
 
     
     LPLC2.Params.T_LPLC2 = LPLC2.Params.T_cardinal*3 ; // T_cardinal + T_cardinal + T_cardinal + T_cardinal, LONG_TAKEOFF
-    LPLC2.Params.T_SHORT_TAKEOFF = 7 * LPLC2.Params.T_LPLC2 ; // SHORT_TAKEOFF
-    LPLC2.Params.n = 1 ; // Spike number threshold for collision 
+    LPLC2.Params.T_SHORT_TAKEOFF = 5 * LPLC2.Params.T_LPLC2 ; // SHORT_TAKEOFF
+    LPLC2.Params.n = 3 ; // Spike number threshold for collision 
 
     // LIF Parameters: 
     /*
@@ -329,8 +334,9 @@ TICin5 ;
             y = i / Width ;
             x = i % Width ;
 
-            //int16_t Diff = ((*Img_Pixel_Cur) - (*Img_Pixel_Pre) ) >> 9 ;
-            int16_t Diff = ((*Img_Pixel_Cur) - (*Img_Pixel_Pre) ) ;
+            // Extract hight 8 bit liminance: >> 8 ; From -255~255 to -128~128: >> 1.  Sum: >> 9
+            int16_t Diff = ((*Img_Pixel_Cur) - (*Img_Pixel_Pre) ) >> 9 ; // When Camera Gain is enabled, this is fuxking good.
+            //int16_t Diff = ((*Img_Pixel_Cur) - (*Img_Pixel_Pre) ) ; // 2025.06.01, depricated by Renyuan.
             
             if(Diff > 127 )
                 Diff = 127 ;
@@ -404,6 +410,7 @@ LPLC2.TIME[2] = TOCin5 ;
             // Is there any redundant AF ? 
             if(AF[i].Vacant_AF == 0 ){
                 if(AF[i].LPLC2 < Params->AF_Threshold ){
+                    LED_Set(4, 0x000000); // LED_4
 
                     // Redundant AF Range : 
                     d = AF[i].Centroid[0] + AF_Radius_Exclusive ;
@@ -436,6 +443,8 @@ LPLC2.TIME[2] = TOCin5 ;
 
                     AF[i].Vacant_AF = 1 ;
                     //printf(" AF[%d] OUT !!! ", i ) ; 
+                }else{
+                    LED_Set(4, 0x00ff00); // LED_4 green: AF existing consistanly !
                 }
             }
             
@@ -543,6 +552,10 @@ LPLC2.TIME[3] = TOCin5 ;
                 //printf("\nShifted AFC of AF[%d]: [%d, %d] ", i, AF[i].Centroid[0], AF[i].Centroid[1] ) ;
                 // Now we've got AFC.
 
+                // 2025.06.01, Renyuan added for EMD fine-tunning:
+                // AF[i].Centroid[0] = Height / 2 ;
+                // AF[i].Centroid[1] = Width / 2 ;
+
                 // If AFC Go into Any Existing AFs: Drop Tt !
                 if(Layers->IS_AF[AF[i].Centroid[0] ][AF[i].Centroid[1] ] == 1 ){
                     // Drop This AF: 
@@ -602,6 +615,16 @@ uint16_t HRC(uint8_t here_cur, uint8_t far_cur, uint8_t here_pre, uint8_t far_pr
 
 void LPLC2_T4_T5(LPLC2_pControlTypedef* hLPLC2)
 {
+    // Visualisation Matrix Initialization :
+    for(int i = 0; i < Height; i ++ )
+    {
+        for(int j = 0; j < Width; j ++ )
+        {
+            T[i][j] = 0 ;
+        }
+    }
+
+
     LPLC2struct_Params* Params = &(hLPLC2->Model->Params ) ;
     LPLC2struct_Layers* Layers = &(hLPLC2->Model->Layers ) ;
     // LPLC2struct_Results* Results = &(hLPLC2->Model->Results ) ;
@@ -638,6 +661,9 @@ void LPLC2_T4_T5(LPLC2_pControlTypedef* hLPLC2)
     int32_t Left = 0 ;
     int32_t Down = 0 ;
     int32_t Up = 0 ;
+
+    // For Visualisation:
+    int32_t Txy = 0 ;
 
     // Results->Quadrant[0] = 0 ;
     // Results->Quadrant[1] = 0 ;
@@ -1161,21 +1187,28 @@ void LPLC2_T4_T5(LPLC2_pControlTypedef* hLPLC2)
                          + (Layers->OFF[cur][y - i*d][x] * Layers->OFF[pre][y][x])
                          - (Layers->OFF[pre][y - i*d][x] * Layers->OFF[cur][y][x]) ;// >> bias;
                     */
-                    Right = (Layers->OFF[cur][y][x + i*d] * Layers->OFF[pre][y][x])
-                          - (Layers->OFF[pre][y][x + i*d] * Layers->OFF[cur][y][x]) ;// >> bias;
+                    Right = (Layers->OFF[cur][y][x + i*d] * Layers->OFF[pre][y][x]);
+                          //- (Layers->OFF[pre][y][x + i*d] * Layers->OFF[cur][y][x]) ;// >> bias;
 
                     // Down in Colias' view, up in original camera : 
-                    Down = (Layers->OFF[cur][y - i*d][x] * Layers->OFF[pre][y][x])
-                         - (Layers->OFF[pre][y - i*d][x] * Layers->OFF[cur][y][x]) ;// >> bias;
+                    Down = (Layers->OFF[cur][y - i*d][x] * Layers->OFF[pre][y][x]);
+                         //- (Layers->OFF[pre][y - i*d][x] * Layers->OFF[cur][y][x]) ;// >> bias;
 
 
                     // Layers->T[y][x] = (uint32_t)sqrt(Right * Right + Up * Up) ;
                     // Results->Quadrant[0] += (float )Layers->T[y][x] ;
-                    AF[N].Quadrant[0] += (Right + Down) ;
-                    
-                    // Layers->T[y][x] += (Right + Down) ;
-                    // Q1_R += Right ;
-                    // Q1_D += Down ;
+                    Txy = Right + Down ;
+                    AF[N].Quadrant[1] += Txy >> 2 ;
+
+                    // Layers->T[y][x] += (Right + Up) ;
+                    // Q4_R += Right ;
+                    // Q4_U += Up ;
+
+                    // Visualisation Matrix T :
+                    Txy = Txy >> 5 ;
+                    if(Txy > 255) Txy = 255 ; // Limit to 8-bit
+                    if(Txy < 0) Txy = 0 ; // Limit to 8-bit
+                    T[y][x] = Txy ;
                 }
             }
         }
@@ -1205,20 +1238,27 @@ void LPLC2_T4_T5(LPLC2_pControlTypedef* hLPLC2)
                          + Layers->OFF[cur][y - i*d][x] * Layers->OFF[pre][y][x]
                          -(Layers->OFF[pre][y - i*d][x] * Layers->OFF[cur][y][x]) ;// >> bias;
                     */
-                    Left = Layers->OFF[cur][y][x - i*d] * Layers->OFF[pre][y][x]
-                         -(Layers->OFF[pre][y][x - i*d] * Layers->OFF[cur][y][x]) ;// >> bias;
+                    Left = Layers->OFF[cur][y][x - i*d] * Layers->OFF[pre][y][x];
+                         //-(Layers->OFF[pre][y][x - i*d] * Layers->OFF[cur][y][x]) ;// >> bias;
 
-                    Down = Layers->OFF[cur][y - i*d][x] * Layers->OFF[pre][y][x]
-                         -(Layers->OFF[pre][y - i*d][x] * Layers->OFF[cur][y][x]) ;// >> bias;
+                    Down = Layers->OFF[cur][y - i*d][x] * Layers->OFF[pre][y][x];
+                         //-(Layers->OFF[pre][y - i*d][x] * Layers->OFF[cur][y][x]) ;// >> bias;
 
 
                     // Layers->T[y][x] = (uint32_t)sqrt(Left * Left + Up * Up) ;
                     // Results->Quadrant[1] += Layers->T[y][x] ;
-                    AF[N].Quadrant[1] += (Left + Down) ;
+                    Txy = Left + Down ;
+                    AF[N].Quadrant[1] += Txy >> 2 ;
 
-                    // Layers->T[y][x] += (Left + Down) ;
-                    // Q2_L += Left ;
-                    // Q2_D += Down ;
+                    // Layers->T[y][x] += (Right + Up) ;
+                    // Q4_R += Right ;
+                    // Q4_U += Up ;
+
+                    // Visualisation Matrix T :
+                    Txy = Txy >> 5 ;
+                    if(Txy > 255) Txy = 255 ; // Limit to 8-bit
+                    if(Txy < 0) Txy = 0 ; // Limit to 8-bit
+                    T[y][x] = Txy ;
                 }
             }
         }
@@ -1248,20 +1288,27 @@ void LPLC2_T4_T5(LPLC2_pControlTypedef* hLPLC2)
                          + Layers->OFF[cur][y + i*d][x] * Layers->OFF[pre][y][x]
                          -(Layers->OFF[pre][y + i*d][x] * Layers->OFF[cur][y][x]) ;// >> bias;
                     */
-                    Left = Layers->OFF[cur][y][x - i*d] * Layers->OFF[pre][y][x]
-                         -(Layers->OFF[pre][y][x - i*d] * Layers->OFF[cur][y][x]) ;// >> bias;
+                    Left = Layers->OFF[cur][y][x - i*d] * Layers->OFF[pre][y][x];
+                         //-(Layers->OFF[pre][y][x - i*d] * Layers->OFF[cur][y][x]) ;// >> bias;
                      
-                    Up   = Layers->OFF[cur][y + i*d][x] * Layers->OFF[pre][y][x]
-                         -(Layers->OFF[pre][y + i*d][x] * Layers->OFF[cur][y][x]) ;// >> bias;
+                    Up   = Layers->OFF[cur][y + i*d][x] * Layers->OFF[pre][y][x];
+                         //-(Layers->OFF[pre][y + i*d][x] * Layers->OFF[cur][y][x]) ;// >> bias;
 
 
                     // Layers->T[y][x] = (uint32_t)sqrt(Left * Left + Down * Down) ;
                     // Results->Quadrant[2] += Layers->T[y][x] ;
-                    AF[N].Quadrant[2] += (Left + Up) ;
+                    Txy = Left + Up ;
+                    AF[N].Quadrant[2] += Txy >> 2 ;
 
-                    // Layers->T[y][x] += (Left + Up) ;
-                    // Q3_L += Left ;
-                    // Q3_U += Up ;
+                    // Layers->T[y][x] += (Right + Up) ;
+                    // Q4_R += Right ;
+                    // Q4_U += Up ;
+
+                    // Visualisation Matrix T :
+                    Txy = Txy >> 5 ;
+                    if(Txy > 255) Txy = 255 ; // Limit to 8-bit
+                    if(Txy < 0) Txy = 0 ; // Limit to 8-bit
+                    T[y][x] = Txy ;
                 }
             }
         }
@@ -1291,23 +1338,57 @@ void LPLC2_T4_T5(LPLC2_pControlTypedef* hLPLC2)
                           + Layers->OFF[cur][y + i*d][x] * Layers->OFF[pre][y][x]
                           -(Layers->OFF[pre][y + i*d][x] * Layers->OFF[cur][y][x]) ;// >> bias;
                     */
-                    Right = Layers->OFF[cur][y][x + i*d] * Layers->OFF[pre][y][x]
-                          -(Layers->OFF[pre][y][x + i*d] * Layers->OFF[cur][y][x]) ;// >> bias;
+                    Right = Layers->OFF[cur][y][x + i*d] * Layers->OFF[pre][y][x];
+                          //-(Layers->OFF[pre][y][x + i*d] * Layers->OFF[cur][y][x]) ;// >> bias;
 
-                    Up    = Layers->OFF[cur][y + i*d][x] * Layers->OFF[pre][y][x]
-                          -(Layers->OFF[pre][y + i*d][x] * Layers->OFF[cur][y][x]) ;// >> bias;
+                    Up    = Layers->OFF[cur][y + i*d][x] * Layers->OFF[pre][y][x];
+                          //-(Layers->OFF[pre][y + i*d][x] * Layers->OFF[cur][y][x]) ;// >> bias;
 
                           
                     // Layers->T[y][x] = (uint32_t)sqrt(Right * Right + Down * Down);
                     // Results->Quadrant[3] += Layers->T[y][x];
-                    AF[N].Quadrant[3] += (Right + Up) ;
+                    Txy = Right + Up ;
+                    AF[N].Quadrant[3] += Txy >> 2 ;
 
                     // Layers->T[y][x] += (Right + Up) ;
                     // Q4_R += Right ;
                     // Q4_U += Up ;
+
+                    // Visualisation Matrix T :
+                    Txy = Txy >> 5 ;
+                    if(Txy > 255) Txy = 255 ; // Limit to 8-bit
+                    if(Txy < 0) Txy = 0 ; // Limit to 8-bit
+                    T[y][x] = Txy ;
                 }
             }
         }
+
+
+        // Visualisation : 
+        // Mark the margin of AF in Layers->T :
+        for(y = AF_y_top ; y <= AF_y_bottom ; y ++ )
+        {
+            for(x = AF_x_left ; x <= AF_x_right ; x ++ )
+            {
+                if( y < 0 || y >= Height ||  x < 0 || x >= Width )
+                    continue ;
+                
+                // Margin:
+                if(y == AF_y_top || x == AF_x_left || y == AF_y_bottom || x == AF_x_right )
+                    T[y][x] = 255 ;
+                // Center:
+                if( ( x == AF_x && y > AF_y-3 && y < AF_y+3) || ( y == AF_y && x > AF_x-3 && x < AF_x+3) )
+                    T[y][x] = 255 ;
+            }
+        }
+		// Transmit image to SerialPort : 	
+		Visualisation_L();
+		Visualisation_P();
+		Visualisation_T();
+		Visualisation_T();
+		transmit_mode = 0;
+
+
 
         // For each quadrant, we have 2 preferred directions.
         // Now we filt the essential one using 'min()' function.
@@ -1505,7 +1586,7 @@ void LPLC2_Projection(LPLC2_pControlTypedef* hLPLC2)
 
                 if(Q[i] < Params->T_cardinal )
                 {
-                    Q[i] = 0 ;
+                    // Q[i] = 0 ; 2025.04.07 Renyuan Removed for judging to preserve the AF.
                     continue ;
                 }
                 expansion_edge_count ++ ;

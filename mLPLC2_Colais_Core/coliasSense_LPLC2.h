@@ -54,4 +54,12 @@ extern LPLC2Type LPLC2;
 extern LPLC2_pControlTypedef hLPLC2;
 
 
+// Visualisation Matrix :
+extern uint8_t T[Image_Height][Image_Width]; 
+
+
+
+
+
+
 #endif

@@ -69,12 +69,12 @@ void VisionToMotor(LPLC2_pControlTypedef* hLPLC2 )
 
             // Calculate Mass Centroid :
             float Centroid_x = (float)numerator_x / ((float)denominator_x + 1) ; // Centroid_x = 0 ~ 98
-            printf("\n\nVISUOMOTOR OUTPUT : ");
-            printf("\n%f Mass Centroid_x of AFs ", Centroid_x );
+            //printf("\n\nVISUOMOTOR OUTPUT : ");
+            //printf("\n%f Mass Centroid_x of AFs ", Centroid_x );
 
             // Threat Direction : 
             Visuomotor->Threat_Direction = (Centroid_x - Image_Width/2) * 70 / 99 ; // Centroid_x - 49, 0 ~ 98 - 49 = -49 ~ 49 (degree )
-            printf("\n%f Threat Direction", Visuomotor->Escape_Direction );
+            //printf("\n%f Threat Direction", Visuomotor->Escape_Direction );
 
 
             // Escape Direction : 
@@ -83,14 +83,14 @@ void VisionToMotor(LPLC2_pControlTypedef* hLPLC2 )
             }else{
                 Visuomotor->Escape_Direction = Visuomotor->Threat_Direction + 90 ; // Threat from left side, turn right.
             }
-            printf("\n%f Escape Direction ", Visuomotor->Escape_Direction );
+            //printf("\n%f Escape Direction ", Visuomotor->Escape_Direction );
 
 
             // Escape Speed :
 			Visuomotor->Threat_Strength = GlobalStrength ;
             Visuomotor->Escape_Speed = 1.0 / (1.0 + exp( - 1.0*((float )GlobalStrength / 20000*NUM_AF) ) ) * MC1.Vmax ; // MC1.Vmax = 1 * 3.3 = 3.3
-            printf("\n%llu GlobalStrength input as speed", GlobalStrength );
-            printf("\n%f Escape Speed ", Visuomotor->Escape_Speed );
+            //printf("\n%llu GlobalStrength input as speed", GlobalStrength );
+            //printf("\n%f Escape Speed ", Visuomotor->Escape_Speed );
 
 
             return ; // Find any collision, return after integrating global information.
@@ -260,6 +260,15 @@ LPLC2_StateType FSM_aLPLC2_State_Run(FSM_LPLC2_StructTypedef* FSM )
 		}
 		case STATE_SHORT_TAKEOFF:
 		{
+			// Short tkeoff can be overridden by another short takeoff :
+			if(Visuomotor->Threat_Strength > Params->T_SHORT_TAKEOFF ) // T_SHORT_TAKEOFF = 1000000
+			{
+				FSM->STATE = STATE_SHORT_TAKEOFF ;
+				FSM->COUNT_CurrentState = 0 ; // reset --> the escaping direction will also be updated in motion control founction.
+				return STATE_SHORT_TAKEOFF ;
+			}
+
+
 			// If short takeoff over, go to wander state :
 			if(FSM_aLPLC2_AlignCheck(FSM )/*Colias has backward moved && turned to ideal direction*/ )
 			{
@@ -402,7 +411,7 @@ LPLC2_StateType FSM_aLPLC2_motion(FSM_LPLC2_StructTypedef* FSM )
 			{
 				// set the target direction
 				// Tactic 1 : 
-				// Meditation. since it's the same as the long-mode
+				// Meditation ... since it's the same as the long-mode
 
 				// Tactic 2 :
 				// Short-mode: 90 degree escape.

@@ -9,7 +9,7 @@
 #define Height 72
 // #define Delay_Length 2 
 #define DELAY_WINDOW 2
-#define NUM_AF 2
+#define NUM_AF 1
 
 
 // LPLC2 Neural Network Model with Attention Mechanism

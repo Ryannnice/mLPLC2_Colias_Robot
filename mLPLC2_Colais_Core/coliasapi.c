@@ -3,7 +3,7 @@
 #include "user_terminal.h"
 #include "coliasSense_board.h"
 #include "coliasSense_Motion.h"
-//#include "debug.h"
+#include "debug.h" // Renyaun added, 2025.6.1
 //#include "prey.h"
 //#include "LCFSM.h"
 #include "visuomotor_LPLC2.h"
@@ -130,7 +130,7 @@ void Colias_loopbody_aLPLC2(void )
 			PID_run(&PID1) ; 
 			LPLC2_StateType STATE = FSM_aLPLC2_motion(&FSM_aLPLC2 ) ;
 
-			FSM_LED_Set() ;
+ 			FSM_LED_Set() ;
 		}
 	}
 }
